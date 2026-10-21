@@ -1,0 +1,1 @@
+{"routes":[{"path":"/","title":"Dashboard Desain Lokal"},{"path":"/requests","title":"Permintaan Desain"},{"path":"/tickets","title":"Tiket Desain"},{"path":"/tickets/:id","title":"Detail Tiket"},{"path":"/designer","title":"Workspace Designer"},{"path":"/qc","title":"Quality Control"},{"path":"/settings","title":"Pengaturan"}]}
