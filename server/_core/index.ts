@@ -8,36 +8,44 @@ import { appRouter } from "../routers.ts";
 import { createContext } from "./context.ts";
 import { serveStatic, setupVite } from "./vite.ts";
 
-async function startServer() {
-  const app = express();
-  const server = createServer(app);
-  // Configure body parser with larger size limit for file uploads
-  app.use(express.json({ limit: "50mb" }));
-  app.use(express.urlencoded({ limit: "50mb", extended: true }));
-  app.get("/api/health", (_req: any, res: any) => res.json({ status: "ok" }));
-  app.get("/api/platform/config.js", (_req: any, res: any) => {
-    res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
-  });
-  registerOAuthRoutes(app);
-  // tRPC API
-  app.use(
-    "/api/trpc",
-    createExpressMiddleware({
-      router: appRouter,
-      createContext,
-    })
-  );
-  // development mode uses Vite, production mode uses static files
-  if (process.env.NODE_ENV === "development") {
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
-  }
+// Inisialisasi aplikasi Express
+const app = express();
+const server = createServer(app);
 
+// Configure body parser with larger size limit for file uploads
+app.use(express.json({ limit: "50mb" }));
+app.use(express.urlencoded({ limit: "50mb", extended: true }));
+
+app.get("/api/health", (_req: any, res: any) => res.json({ status: "ok" }));
+app.get("/api/platform/config.js", (_req: any, res: any) => {
+  res.set("Cache-Control", "no-store").type("application/javascript").send(publicPlatformScript());
+});
+
+registerOAuthRoutes(app);
+
+// tRPC API
+app.use(
+  "/api/trpc",
+  createExpressMiddleware({
+    router: appRouter,
+    createContext,
+  })
+);
+
+// development mode uses Vite, production mode uses static files
+if (process.env.NODE_ENV === "development") {
+  setupVite(app, server).catch(console.error);
+} else {
+  serveStatic(app);
+}
+
+// Jalankan listen hanya jika tidak berjalan di Vercel Serverless (misal: dijalankan lokal)
+if (!process.env.VERCEL) {
   const port = Number(process.env.PORT || "3000");
   if (!Number.isInteger(port) || port < 1 || port > 65535) throw new Error("Invalid PORT");
   server.on("error", (error: any) => { console.error("Server failed:", error.message); process.exit(1); });
   server.listen(port, "0.0.0.0", () => console.log(`Server listening on port ${port}`));
 }
 
-startServer().catch((error: any) => { console.error(error); process.exit(1); });
+// Ekspor app Express sebagai handler untuk Vercel Serverless Function
+export default app;
