@@ -32,10 +32,10 @@ app.use(
   })
 );
 
-// development mode uses Vite, production mode uses static files
+// development mode uses Vite, production mode uses static files (only for standalone server)
 if (process.env.NODE_ENV === "development") {
   setupVite(app, server).catch(console.error);
-} else {
+} else if (!process.env.VERCEL) {
   serveStatic(app);
 }
 

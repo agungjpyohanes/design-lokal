@@ -28,7 +28,16 @@ import {
   readSlaHours,
   roles,
 } from "../common/helpers";
-import { ticketRows, visibleRows } from "./helpers";
+import {
+  assertCanAccessTicket,
+  assertCanRegisterServerUpload,
+  assertCanUpdateJobStatus,
+  assertCanUploadTicketFile,
+  detectAndValidateFile,
+  ticketRows,
+  validateBase64Payload,
+  visibleRows,
+} from "./helpers";
 
 export const ticketsRouter = router({
   list: protectedProcedure.query(async ({ ctx }) => {
@@ -300,6 +309,7 @@ export const ticketsRouter = router({
             .limit(1);
 
           if (row) {
+            assertCanAccessTicket(ctx.user, { request: row.request, slot: row.slot });
             const [op] = await db.select().from(operationalIds).where(eq(operationalIds.ticketId, input.id)).limit(1);
             const [fileRows, approvalRows, qcRows, eventRows, updateRows, references, accSessionRows] = await Promise.all([
               db
@@ -407,6 +417,7 @@ export const ticketsRouter = router({
             };
           }
         } catch (e) {
+          if (e instanceof TRPCError) throw e;
           console.warn("[tickets.detail] DB query failed, using demoStore fallback:", e);
         }
       }
@@ -414,6 +425,7 @@ export const ticketsRouter = router({
       // Demo store fallback detail
       const demoDetail = demoStore.getTicketDetail(input.id);
       if (demoDetail) {
+        assertCanAccessTicket(ctx.user, { request: demoDetail.request, slot: demoDetail.designerSlot });
         return {
           ...demoDetail,
           slaHours: slaHours[demoDetail.processStatus] || 12,
@@ -445,6 +457,7 @@ export const ticketsRouter = router({
             .limit(1);
 
           if (row) {
+            assertCanUpdateJobStatus(ctx.user, row.slot);
             await db.transaction(async (tx) => {
               await tx
                 .update(tickets)
@@ -477,6 +490,7 @@ export const ticketsRouter = router({
             return { success: true };
           }
         } catch (e) {
+          if (e instanceof TRPCError) throw e;
           console.warn("[updateJobStatus] DB failed, fallback to demoStore:", e);
         }
       }
@@ -484,6 +498,8 @@ export const ticketsRouter = router({
       // Demo store update
       const t = demoStore.tickets.find((item) => item.id === input.ticketId);
       if (t) {
+        const slot = demoStore.designerSlots.find((s) => s.id === t.designerSlotId);
+        assertCanUpdateJobStatus(ctx.user, slot);
         t.jobStatus = input.status;
         t.jobNote = input.note || null;
         if (input.eta) t.eta = new Date(`${input.eta}T00:00:00Z`);
@@ -497,8 +513,9 @@ export const ticketsRouter = router({
           eta: input.eta ? new Date(`${input.eta}T00:00:00Z`) : null,
           createdAt: new Date(),
         });
+        return { success: true };
       }
-      return { success: true };
+      throw new TRPCError({ code: "NOT_FOUND", message: "Tiket tidak ditemukan." });
     }),
 
   spvReview: protectedProcedure
@@ -1140,14 +1157,53 @@ export const ticketsRouter = router({
       z.object({
         ticketId: z.number().int(),
         fileName: z.string().trim().min(1).max(255),
-        contentType: z.string().max(120),
+        contentType: z.string().max(120).optional(),
         fileType: z.enum(["draft", "final", "referensi"]),
         note: z.string().max(2000).optional(),
-        dataBase64: z.string().min(1).max(12_000_000),
+        dataBase64: z.string().min(1).max(16_000_000),
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // 1. Fetch ticket, slot, and request
       const db = await getDb();
+      let ticketRow: { ticket: any; slot: any; request: any } | null = null;
+      if (db) {
+        try {
+          const [row] = await db
+            .select({ ticket: tickets, slot: designerSlots, request: requests })
+            .from(tickets)
+            .innerJoin(designerSlots, eq(tickets.designerSlotId, designerSlots.id))
+            .innerJoin(requests, eq(tickets.requestId, requests.id))
+            .where(eq(tickets.id, input.ticketId))
+            .limit(1);
+          if (row) ticketRow = row;
+        } catch (e) {
+          console.warn("[uploadFile] DB ticket fetch error:", e);
+        }
+      }
+
+      if (!ticketRow) {
+        const t = demoStore.tickets.find((item) => item.id === input.ticketId);
+        if (t) {
+          const slot = demoStore.designerSlots.find((s) => s.id === t.designerSlotId);
+          const request = demoStore.requests.find((r) => r.id === t.requestId);
+          ticketRow = { ticket: t, slot, request };
+        }
+      }
+
+      if (!ticketRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Tiket tidak ditemukan." });
+      }
+
+      // 2. Authorization check before decode or storage/db side-effects
+      assertCanUploadTicketFile(ctx.user, ticketRow, input.fileType);
+
+      // 3. Base64 payload validation & size check (max 8 MB)
+      const bytes = validateBase64Payload(input.dataBase64);
+
+      // 4. File extension and magic bytes validation (server-verified canonical content type)
+      const { canonicalContentType } = detectAndValidateFile(input.fileName, bytes);
+
       const nextProcess =
         input.fileType === "draft"
           ? "review_spv"
@@ -1164,89 +1220,79 @@ export const ticketsRouter = router({
 
       if (db) {
         try {
-          const [row] = await db
-            .select({ ticket: tickets, slot: designerSlots, request: requests })
-            .from(tickets)
-            .innerJoin(designerSlots, eq(tickets.designerSlotId, designerSlots.id))
-            .innerJoin(requests, eq(tickets.requestId, requests.id))
-            .where(eq(tickets.id, input.ticketId))
-            .limit(1);
+          const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+          const upload = await storagePut(
+            `design-local/${ticketRow.ticket.ticketNo}/${input.fileType}/${Date.now()}_${safeName}`,
+            bytes,
+            canonicalContentType
+          );
 
-          if (row) {
-            const bytes = Buffer.from(input.dataBase64, "base64");
-            const safeName = input.fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-            const upload = await storagePut(
-              `design-local/${row.ticket.ticketNo}/${input.fileType}/${Date.now()}_${safeName}`,
-              bytes,
-              input.contentType || "application/octet-stream"
-            );
+          // Hitung riwayat versi file sebelumnya untuk tiket dan tipe file ini
+          const existingSameTypeFiles = await db
+            .select({ id: ticketFiles.id })
+            .from(ticketFiles)
+            .where(and(eq(ticketFiles.ticketId, input.ticketId), eq(ticketFiles.fileType, input.fileType)));
+          const calculatedVersion = existingSameTypeFiles.length + 1;
 
-            // Hitung riwayat versi file sebelumnya untuk tiket dan tipe file ini
-            const existingSameTypeFiles = await db
-              .select({ id: ticketFiles.id })
-              .from(ticketFiles)
-              .where(and(eq(ticketFiles.ticketId, input.ticketId), eq(ticketFiles.fileType, input.fileType)));
-            const calculatedVersion = existingSameTypeFiles.length + 1;
-
-            await db.transaction(async (tx) => {
-              await tx.insert(ticketFiles).values({
-                ticketId: input.ticketId,
-                uploadedBy: ctx.user.id,
-                fileName: input.fileName,
-                storageKey: upload.key,
-                fileType: input.fileType,
-                contentType: input.contentType || "application/octet-stream",
-                fileSize: bytes.length,
-                versionNo: calculatedVersion,
-                note: emptyToNull(input.note),
-              });
-
-              const ticketUpdates: Record<string, any> = { processUpdatedAt: new Date() };
-              if (nextProcess) ticketUpdates.processStatus = nextProcess;
-              if (nextJobStatus) {
-                ticketUpdates.jobStatus = nextJobStatus;
-                ticketUpdates.jobNote = emptyToNull(input.note);
-              }
-
-              await tx.update(tickets).set(ticketUpdates).where(eq(tickets.id, input.ticketId));
-
-              if (nextJobStatus) {
-                await tx.insert(jobUpdates).values({
-                  ticketId: input.ticketId,
-                  designerSlotId: row.slot.id,
-                  designerUserId: ctx.user.id,
-                  status: nextJobStatus,
-                  note: emptyToNull(input.note) || `Unggah berkas ${input.fileType} v${calculatedVersion}`,
-                  eta: null,
-                });
-              }
-
-              await event(
-                {
-                  ticketId: input.ticketId,
-                  actorUserId: ctx.user.id,
-                  eventType: "file_uploaded",
-                  detail: `${input.fileName} (v${calculatedVersion}) diunggah sebagai ${input.fileType.toUpperCase()}${input.note ? ` — Catatan: ${input.note}` : ""}`,
-                },
-                tx
-              );
+          await db.transaction(async (tx) => {
+            await tx.insert(ticketFiles).values({
+              ticketId: input.ticketId,
+              uploadedBy: ctx.user.id,
+              fileName: input.fileName,
+              storageKey: upload.key,
+              fileType: input.fileType,
+              contentType: canonicalContentType,
+              fileSize: bytes.length,
+              versionNo: calculatedVersion,
+              note: emptyToNull(input.note),
             });
 
-            return {
-              success: true,
-              fileName: input.fileName,
-              versionNo: calculatedVersion,
-              note: input.note || null,
-              nextProcess: nextProcess || row.ticket.processStatus,
-            };
-          }
+            const ticketUpdates: Record<string, any> = { processUpdatedAt: new Date() };
+            if (nextProcess) ticketUpdates.processStatus = nextProcess;
+            if (nextJobStatus) {
+              ticketUpdates.jobStatus = nextJobStatus;
+              ticketUpdates.jobNote = emptyToNull(input.note);
+            }
+
+            await tx.update(tickets).set(ticketUpdates).where(eq(tickets.id, input.ticketId));
+
+            if (nextJobStatus) {
+              await tx.insert(jobUpdates).values({
+                ticketId: input.ticketId,
+                designerSlotId: ticketRow.slot.id,
+                designerUserId: ctx.user.id,
+                status: nextJobStatus,
+                note: emptyToNull(input.note) || `Unggah berkas ${input.fileType} v${calculatedVersion}`,
+                eta: null,
+              });
+            }
+
+            await event(
+              {
+                ticketId: input.ticketId,
+                actorUserId: ctx.user.id,
+                eventType: "file_uploaded",
+                detail: `${input.fileName} (v${calculatedVersion}) diunggah sebagai ${input.fileType.toUpperCase()}${input.note ? ` — Catatan: ${input.note}` : ""}`,
+              },
+              tx
+            );
+          });
+
+          return {
+            success: true,
+            fileName: input.fileName,
+            versionNo: calculatedVersion,
+            note: input.note || null,
+            nextProcess: nextProcess || ticketRow.ticket.processStatus,
+          };
         } catch (e) {
-          console.warn("[uploadFile] DB failed, fallback to demoStore:", e);
+          if (e instanceof TRPCError) throw e;
+          console.warn("[uploadFile] DB write failed, fallback to demoStore:", e instanceof Error ? e.message : "unknown");
         }
       }
 
       // Demo store file insertion
-      const t = demoStore.tickets.find((item) => item.id === input.ticketId);
+      const t = ticketRow.ticket;
       const demoSameTypeFiles = demoStore.ticketFiles.filter(
         (f) => f.ticketId === input.ticketId && f.fileType === input.fileType
       );
@@ -1270,8 +1316,8 @@ export const ticketsRouter = router({
         fileName: input.fileName,
         storageKey: `demo/${input.fileName}`,
         fileType: input.fileType,
-        contentType: input.contentType,
-        fileSize: 1024 * 1024 * (calculatedVersion > 1 ? 2.5 : 1.8),
+        contentType: canonicalContentType,
+        fileSize: bytes.length,
         versionNo: calculatedVersion,
         note: input.note || null,
         createdAt: new Date(),
@@ -1302,7 +1348,7 @@ export const ticketsRouter = router({
         fileName: input.fileName,
         versionNo: calculatedVersion,
         note: input.note || null,
-        nextProcess: nextProcess || t?.processStatus || "draft",
+        nextProcess: nextProcess || (t ? t.processStatus : "draft"),
       };
     }),
 
@@ -1314,28 +1360,43 @@ export const ticketsRouter = router({
       })
     )
     .mutation(async ({ ctx, input }) => {
+      // 1. Role gate
       roles("admin", "spv", "superadmin", "designer", "qc1", "qc2")(ctx.user.appRole);
 
-      // Verifikasi Gerbang: Tiket harus sudah lolos QC Checker 2 (status: siap_upload, uploaded, menunggu_close, closed)
+      // 2. Fetch ticket (and slot)
       const db = await getDb();
-      let currentStatus: string | null = null;
+      let ticketRow: { ticket: any; slot: any } | null = null;
       if (db) {
         try {
-          const [t] = await db
-            .select({ processStatus: tickets.processStatus })
+          const [row] = await db
+            .select({ ticket: tickets, slot: designerSlots })
             .from(tickets)
+            .innerJoin(designerSlots, eq(tickets.designerSlotId, designerSlots.id))
             .where(eq(tickets.id, input.ticketId))
             .limit(1);
-          currentStatus = t?.processStatus || null;
+          if (row) ticketRow = row;
         } catch (e) {
           console.warn("[registerServerUpload] DB fetch error:", e);
         }
       }
-      if (!currentStatus) {
+
+      if (!ticketRow) {
         const t = demoStore.tickets.find((item) => item.id === input.ticketId);
-        currentStatus = t?.processStatus || null;
+        if (t) {
+          const slot = demoStore.designerSlots.find((s) => s.id === t.designerSlotId);
+          ticketRow = { ticket: t, slot };
+        }
       }
 
+      if (!ticketRow) {
+        throw new TRPCError({ code: "NOT_FOUND", message: "Tiket tidak ditemukan." });
+      }
+
+      // 3. Resource assignment check for designer
+      assertCanRegisterServerUpload(ctx.user, ticketRow);
+
+      // 4. Verifikasi Gerbang: Tiket harus sudah lolos QC Checker 2 (status: siap_upload, uploaded, menunggu_close, closed)
+      const currentStatus = ticketRow.ticket.processStatus;
       const allowedStatuses = ["siap_upload", "uploaded", "menunggu_close", "closed"];
       if (!currentStatus || !allowedStatuses.includes(currentStatus)) {
         throw new TRPCError({
@@ -1385,11 +1446,12 @@ export const ticketsRouter = router({
           });
           return { success: true };
         } catch (e) {
+          if (e instanceof TRPCError) throw e;
           console.warn("[registerServerUpload] DB failed, fallback to demoStore:", e);
         }
       }
 
-      const t = demoStore.tickets.find((item) => item.id === input.ticketId);
+      const t = ticketRow.ticket;
       if (t && t.processStatus === "siap_upload") {
         t.processStatus = "uploaded";
         t.processUpdatedAt = new Date();
