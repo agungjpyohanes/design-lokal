@@ -2,11 +2,11 @@ import "dotenv/config";
 import express from "express";
 import { createServer } from "http";
 import { createExpressMiddleware } from "@trpc/server/adapters/express";
-import { registerOAuthRoutes } from "./oauth";
-import { publicPlatformScript } from "./publicConfig";
-import { appRouter } from "../routers";
-import { createContext } from "./context";
-import { serveStatic, setupVite } from "./vite";
+import { registerOAuthRoutes } from "./oauth.ts";
+import { publicPlatformScript } from "./publicConfig.ts";
+import { appRouter } from "../routers.ts";
+import { createContext } from "./context.ts";
+import { serveStatic, setupVite } from "./vite.ts";
 
 async function startServer() {
   const app = express();
