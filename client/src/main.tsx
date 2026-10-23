@@ -8,7 +8,26 @@ import App from "./App";
 import { startLogin } from "./const";
 import "./index.css";
 
-const queryClient = new QueryClient();
+const queryClient = new QueryClient({
+  defaultOptions: {
+    queries: {
+      staleTime: 10_000,
+      refetchOnWindowFocus: false,
+      retry(failureCount, error) {
+        if (error instanceof TRPCClientError) {
+          const status = error.data?.httpStatus;
+          if (status === 401 || status === 403 || error.message === UNAUTHED_ERR_MSG) {
+            return false;
+          }
+        }
+        return failureCount < 2;
+      },
+    },
+    mutations: {
+      retry: false,
+    },
+  },
+});
 
 const redirectToLoginIfUnauthorized = (error: unknown) => {
   if (!(error instanceof TRPCClientError)) return;
@@ -62,11 +81,60 @@ const trpcClient = trpc.createClient({
         }
         return {};
       },
-      fetch(input, init) {
-        return globalThis.fetch(input, {
+      async fetch(input, init) {
+        const response = await globalThis.fetch(input, {
           ...(init ?? {}),
           credentials: "include",
         });
+
+        // Resilience guard: If server returns non-JSON (HTML 502/504 gateway error, etc.),
+        // synthesize a valid JSON response so TRPCClientError parses cleanly without throwing
+        // "SyntaxError: Unexpected token 'A' / '<' ... is not valid JSON".
+        const contentType = response.headers.get("content-type") || "";
+        if (!contentType.includes("application/json")) {
+          const rawText = await response.text().catch(() => "");
+          console.warn(
+            "[tRPC Network Interceptor] Intercepted non-JSON response:",
+            response.status,
+            rawText.slice(0, 100)
+          );
+
+          let batchCount = 1;
+          const inputStr = typeof input === "string" ? input : (input as Request)?.url || "";
+          if (inputStr) {
+            const urlPath = inputStr.split("?")[0];
+            const lastSegment = urlPath.split("/").pop() || "";
+            const count = lastSegment.split(",").length;
+            if (count > 1) batchCount = count;
+          } else if (init?.body && typeof init.body === "string") {
+            try {
+              const parsed = JSON.parse(init.body);
+              if (Array.isArray(parsed)) batchCount = parsed.length;
+            } catch {}
+          }
+
+          const errorItem = {
+            error: {
+              message: rawText.trim() || `Network response error (${response.status})`,
+              code: -32603,
+              data: {
+                code: "INTERNAL_SERVER_ERROR",
+                httpStatus: response.status || 500,
+              },
+            },
+          };
+          const syntheticBody = JSON.stringify(Array.from({ length: batchCount }, () => errorItem));
+
+          return new Response(syntheticBody, {
+            status: response.status || 500,
+            statusText: response.statusText || "Internal Server Error",
+            headers: {
+              "Content-Type": "application/json",
+            },
+          });
+        }
+
+        return response;
       },
     }),
   ],

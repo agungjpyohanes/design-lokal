@@ -5,20 +5,46 @@ import { ENV } from './_core/env';
 import { demoStore } from "./demoStore";
 
 let _db: ReturnType<typeof drizzle> | null = null;
+let _isDbConnected: boolean | null = null;
+let _lastConnectionAttempt = 0;
+const RETRY_INTERVAL_MS = 30_000; // Check DB at most once every 30s if offline/failed
+
+export function markDbFailed(error?: unknown) {
+  console.warn(
+    "[Database] Connection failure detected, tripping circuit breaker to demoStore:",
+    error instanceof Error ? error.message : error
+  );
+  _isDbConnected = false;
+  _lastConnectionAttempt = Date.now();
+  _db = null;
+}
+
+export function resetDbCircuitBreaker() {
+  _isDbConnected = null;
+  _lastConnectionAttempt = 0;
+  _db = null;
+}
 
 // Lazily create the drizzle instance so local tooling can run without a DB.
-export async function getDb() {
+export async function getDb(): Promise<ReturnType<typeof drizzle> | null> {
   const dbUrl = process.env.DATABASE_URL?.trim();
   if (!dbUrl || dbUrl === "false") {
+    return null;
+  }
+
+  const now = Date.now();
+  // Circuit breaker: prevent connection hangs on serverless when DB is unreachable
+  if (_isDbConnected === false && now - _lastConnectionAttempt < RETRY_INTERVAL_MS) {
     return null;
   }
 
   if (!_db) {
     try {
       _db = drizzle(dbUrl);
+      _isDbConnected = true;
     } catch (error) {
-      console.warn("[Database] Failed to initialize client:", error);
-      _db = null;
+      markDbFailed(error);
+      return null;
     }
   }
   return _db;

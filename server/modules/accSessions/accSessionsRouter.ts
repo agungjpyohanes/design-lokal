@@ -70,16 +70,18 @@ export const accSessionsRouter = router({
           .leftJoin(users, eq(accSessions.recordedByUserId, users.id))
           .orderBy(desc(accSessions.presentationDate), desc(accSessions.id));
 
-        const allItems = await db.select().from(accSessionItems);
+        if (rows.length > 0) {
+          const allItems = await db.select().from(accSessionItems);
 
-        return rows.map(({ session, recorder }) => {
-          const items = allItems.filter((it) => it.sessionId === session.id);
-          return {
-            ...session,
-            recorderName: recorder?.name || "SPV / Admin",
-            itemsCount: items.length,
-          };
-        });
+          return rows.map(({ session, recorder }) => {
+            const items = allItems.filter((it) => it.sessionId === session.id);
+            return {
+              ...session,
+              recorderName: recorder?.name || "SPV / Admin",
+              itemsCount: items.length,
+            };
+          });
+        }
       } catch (e) {
         console.warn("[accSessions.list] DB failed, fallback to demoStore:", e);
       }
@@ -157,24 +159,26 @@ export const accSessionsRouter = router({
           .innerJoin(requests, eq(tickets.requestId, requests.id))
           .orderBy(desc(tickets.id));
 
-        const files = await db.select().from(ticketFiles);
+        if (rows.length > 0) {
+          const files = await db.select().from(ticketFiles);
 
-        return rows.map(({ ticket, request }) => {
-          const tFiles = files
-            .filter((f) => f.ticketId === ticket.id)
-            .sort((a, b) => b.versionNo - a.versionNo);
-          const latest = tFiles[0];
-          return {
-            id: ticket.id,
-            ticketNo: ticket.ticketNo,
-            productType: request.productType,
-            requesterName: request.requesterName,
-            processStatus: ticket.processStatus,
-            jobStatus: ticket.jobStatus,
-            latestVersion: latest ? `v${latest.versionNo} (${latest.fileType})` : "v1",
-            latestFileName: latest?.fileName || null,
-          };
-        });
+          return rows.map(({ ticket, request }) => {
+            const tFiles = files
+              .filter((f) => f.ticketId === ticket.id)
+              .sort((a, b) => b.versionNo - a.versionNo);
+            const latest = tFiles[0];
+            return {
+              id: ticket.id,
+              ticketNo: ticket.ticketNo,
+              productType: request.productType,
+              requesterName: request.requesterName,
+              processStatus: ticket.processStatus,
+              jobStatus: ticket.jobStatus,
+              latestVersion: latest ? `v${latest.versionNo} (${latest.fileType})` : "v1",
+              latestFileName: latest?.fileName || null,
+            };
+          });
+        }
       } catch (e) {
         console.warn("[accSessions.availableTickets] DB failed, fallback to demoStore:", e);
       }

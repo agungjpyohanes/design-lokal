@@ -47,6 +47,16 @@ app.use("/api", (err: any, _req: any, res: any, next: any) => {
   });
 });
 
+// API 404 Catch-All: Ensure any unmatched /api route returns JSON, never falling through to HTML
+app.all("/api/*", (_req: any, res: any) => {
+  res.status(404).json({
+    error: {
+      message: "API endpoint not found",
+      code: "NOT_FOUND",
+    },
+  });
+});
+
 // development mode uses Vite, production mode uses static files (only for standalone server)
 if (process.env.NODE_ENV === "development") {
   setupVite(app, server).catch(console.error);
