@@ -7,6 +7,7 @@ import TicketsPage from "./pages/Tickets";
 import TicketDetailPage from "./pages/TicketDetail";
 import DesignerPage from "./pages/Designer";
 import QCPage from "./pages/QC";
+import AccSessionsPage from "./pages/AccSessions";
 import SettingsPage from "./pages/Settings";
 import NotFound from "./pages/NotFound";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -22,8 +23,9 @@ function AppRoutes() {
         <Route path="/requests" component={RequestsPage} />
         <Route path="/tickets" component={TicketsPage} />
         <Route path="/tickets/:id" component={TicketDetailPage} />
-        <Route path="/designer">{() => user?.appRole === "designer" ? <DesignerPage /> : <div className="detail-card"><h2>Workspace khusus Designer</h2><p>Halaman ini hanya tersedia untuk akun dengan role Designer.</p></div>}</Route>
+        <Route path="/designer">{() => (user?.appRole === "designer" || user?.appRole === "superadmin" || user?.isSuperAdmin) ? <DesignerPage /> : <div className="detail-card"><h2>Workspace khusus Designer</h2><p>Halaman ini hanya tersedia untuk akun dengan role Designer atau Superadmin.</p></div>}</Route>
         <Route path="/qc" component={QCPage} />
+        <Route path="/acc-sessions" component={AccSessionsPage} />
         <Route path="/settings" component={SettingsPage} />
         <Route component={NotFound} />
       </Switch>

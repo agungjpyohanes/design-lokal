@@ -89,6 +89,9 @@ export const requests = mysqlTable("design_requests", {
   referenceLink: text("referenceLink"),
   notes: text("notes"),
   status: varchar("status", { length: 40 }).default("baru_masuk").notNull(),
+  gateDecision: varchar("gateDecision", { length: 40 }),
+  gateReason: text("gateReason"),
+  internalNotes: text("internalNotes"),
   reviewDecision: varchar("reviewDecision", { length: 40 }),
   reviewReason: text("reviewReason"),
   reviewedBy: int("reviewedBy").references(() => users.id, { onDelete: "set null" }),
@@ -166,6 +169,7 @@ export const ticketFiles = mysqlTable("ticket_files", {
   contentType: varchar("contentType", { length: 120 }).notNull(),
   fileSize: int("fileSize").notNull(),
   versionNo: int("versionNo").default(1).notNull(),
+  note: text("note"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
 
@@ -202,3 +206,33 @@ export const activityEvents = mysqlTable("ticket_activity_events", {
   detail: text("detail"),
   createdAt: timestamp("createdAt").defaultNow().notNull(),
 });
+
+export const accSessions = mysqlTable("acc_sessions", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionNo: varchar("sessionNo", { length: 32 }).notNull().unique(), // Format: ACC-YYYY-MM
+  presentationDate: date("presentationDate").notNull(),
+  recordedByUserId: int("recordedByUserId").notNull().references(() => users.id),
+  attendees: json("attendees").$type<string[]>().notNull(),
+  generalNotes: text("generalNotes"),
+  status: mysqlEnum("status", ["scheduled", "completed", "cancelled"]).default("scheduled").notNull(),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+  updatedAt: timestamp("updatedAt").defaultNow().onUpdateNow().notNull(),
+});
+
+export type AccSession = typeof accSessions.$inferSelect;
+export type InsertAccSession = typeof accSessions.$inferInsert;
+
+export const accSessionItems = mysqlTable("acc_session_items", {
+  id: int("id").autoincrement().primaryKey(),
+  sessionId: int("sessionId").notNull().references(() => accSessions.id, { onDelete: "cascade" }),
+  ticketId: int("ticketId").references(() => tickets.id, { onDelete: "set null" }),
+  title: varchar("title", { length: 255 }).notNull(),
+  fileVersion: varchar("fileVersion", { length: 64 }), // Keterangan versi file yang dipresentasikan (contoh: v1, v2)
+  decision: mysqlEnum("decision", ["pending", "acc", "acc_catatan", "revisi", "tolak"]).default("pending").notNull(),
+  notes: text("notes"),
+  createdAt: timestamp("createdAt").defaultNow().notNull(),
+});
+
+export type AccSessionItem = typeof accSessionItems.$inferSelect;
+export type InsertAccSessionItem = typeof accSessionItems.$inferInsert;
+

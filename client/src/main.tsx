@@ -79,3 +79,17 @@ createRoot(document.getElementById("root")!).render(
     </QueryClientProvider>
   </trpc.Provider>
 );
+
+// Registrasi Service Worker PWA
+if (typeof window !== "undefined" && "serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker
+      .register("/sw.js")
+      .then((reg) => {
+        console.log("[PWA] Service Worker aktif dengan scope:", reg.scope);
+      })
+      .catch((err) => {
+        console.info("[PWA] Info: Registrasi Service Worker offline/lokal:", err);
+      });
+  });
+}

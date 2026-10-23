@@ -1,0 +1,26 @@
+{
+  "name": "Design-Lokal Prepress Portal",
+  "short_name": "DesainLokal",
+  "description": "Sistem Manajemen Tiket Desain, Presentasi ACC Owner, dan Kontrol Prepress Produksi",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "theme_color": "#163c3a",
+  "background_color": "#f4f3ec",
+  "categories": ["business", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/desain-lokal-mark.svg",
+      "sizes": "48x48 72x72 96x96 128x128 192x192 256x256 512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    {
+      "src": "/desain-lokal-mark.svg",
+      "sizes": "192x192 512x512",
+      "type": "image/svg+xml",
+      "purpose": "maskable"
+    }
+  ]
+}
