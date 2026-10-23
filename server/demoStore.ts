@@ -32,8 +32,25 @@ export class DemoDataStore {
 
   getTicketRows() {
     return this.tickets.map((ticket) => {
-      const request = this.requests.find((r) => r.id === ticket.requestId)!;
-      const slot = this.designerSlots.find((s) => s.id === ticket.designerSlotId)!;
+      const request =
+        this.requests.find((r) => r.id === ticket.requestId) || {
+          id: ticket.requestId,
+          requestNo: `REQ-2026-${String(ticket.requestId).padStart(3, "0")}`,
+          productType: "Desain Cetak",
+          requesterName: "Marketing",
+          requesterUserId: 3,
+          requestedPriority: "normal" as const,
+          finalPriority: "normal" as const,
+        };
+      const slot =
+        this.designerSlots.find((s) => s.id === ticket.designerSlotId) || {
+          id: ticket.designerSlotId || 1,
+          slotNumber: 1,
+          label: "Designer 1",
+          displayName: "Rian Hidayat",
+          userId: 5,
+          isActive: true,
+        };
       return { ticket, request, slot };
     });
   }

@@ -735,6 +735,24 @@ export const DEMO_TICKETS = [
     createdAt: new Date("2026-10-09T09:00:00Z"),
     updatedAt: new Date("2026-10-22T11:00:00Z"),
   },
+  {
+    id: 10,
+    ticketNo: "DES-2026-010",
+    requestId: 4,
+    spvUserId: 2,
+    designerSlotId: 4, // Designer 4 (Anisa Rahma)
+    brief: "Paperbag Souvenir Motif Batik Parang Modern Kontemporer. Desain draft seri parang emas dan navy telah selesai disusun, diajukan untuk evaluasi prepress dan kesiapan cetak oleh SPV.",
+    processStatus: "review_spv",
+    processUpdatedAt: new Date("2026-10-22T14:00:00Z"),
+    jobStatus: "Draft dikirim",
+    jobNote: "Draft 1 selesai dikerjakan, menunggu review dan persetujuan dari Supervisor.",
+    eta: new Date("2026-10-27T00:00:00Z"),
+    deadline: new Date("2026-11-12T00:00:00Z"),
+    startedAt: new Date("2026-10-19T09:00:00Z"),
+    closedAt: null,
+    createdAt: new Date("2026-10-18T10:00:00Z"),
+    updatedAt: new Date("2026-10-22T14:00:00Z"),
+  },
 ];
 
 export const DEMO_OPERATIONAL_IDS = [

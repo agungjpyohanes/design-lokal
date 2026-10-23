@@ -29,8 +29,23 @@ app.use(
   createExpressMiddleware({
     router: appRouter,
     createContext,
+    onError({ path, error }) {
+      console.warn(`[tRPC Error on ${path ?? "unknown"}]:`, error.message);
+    },
   })
 );
+
+// Guarantee zero HTML/plain-text leaks on /api endpoints: always return clean JSON
+app.use("/api", (err: any, _req: any, res: any, next: any) => {
+  if (res.headersSent) return next(err);
+  console.error("[API Error Caught]:", err?.message || err);
+  res.status(err.status || err.statusCode || 500).json({
+    error: {
+      message: err.message || "Internal Server Error",
+      code: err.code || "INTERNAL_SERVER_ERROR",
+    },
+  });
+});
 
 // development mode uses Vite, production mode uses static files (only for standalone server)
 if (process.env.NODE_ENV === "development") {
