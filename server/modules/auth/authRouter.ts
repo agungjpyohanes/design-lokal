@@ -85,8 +85,8 @@ export const authRouter = router({
         expiresInMs: LOCAL_SESSION_MS,
       });
 
-      ctx.res.cookie(COOKIE_NAME, sessionToken, {
-        ...getSessionCookieOptions(ctx.req),
+      (ctx.res as any).cookie(COOKIE_NAME, sessionToken, {
+        ...getSessionCookieOptions(ctx.req as any),
         maxAge: LOCAL_SESSION_MS,
       });
 
@@ -99,8 +99,8 @@ export const authRouter = router({
     }),
 
   logout: publicProcedure.mutation(({ ctx }) => {
-    const cookieOptions = getSessionCookieOptions(ctx.req);
-    ctx.res.clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
+    const cookieOptions = getSessionCookieOptions(ctx.req as any);
+    (ctx.res as any).clearCookie(COOKIE_NAME, { ...cookieOptions, maxAge: -1 });
     return { success: true } as const;
   }),
 });

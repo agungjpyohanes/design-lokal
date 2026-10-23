@@ -74,11 +74,11 @@ function writeToLogFile(source: LogSource, entries: unknown[]) {
  * - Files: browserConsole.log, networkRequests.log, sessionReplay.log
  * - Auto-trimmed when exceeding 1MB (keeps newest entries)
  */
-function vitePluginManusDebugCollector(): Plugin {
+function vitePluginManusDebugCollector(): any {
   return {
     name: "manus-debug-collector",
 
-    transformIndexHtml(html) {
+    transformIndexHtml(html: string) {
       if (process.env.NODE_ENV === "production") {
         return html;
       }
@@ -96,9 +96,9 @@ function vitePluginManusDebugCollector(): Plugin {
       };
     },
 
-    configureServer(server: ViteDevServer) {
+    configureServer(server: any) {
       // POST /__manus__/logs: Browser sends logs (written directly to files)
-      server.middlewares.use("/__manus__/logs", (req, res, next) => {
+      server.middlewares.use("/__manus__/logs", (req: any, res: any, next: any) => {
         if (req.method !== "POST") {
           return next();
         }
@@ -131,7 +131,7 @@ function vitePluginManusDebugCollector(): Plugin {
         }
 
         let body = "";
-        req.on("data", (chunk) => {
+        req.on("data", (chunk: any) => {
           body += chunk.toString();
         });
 
@@ -152,23 +152,23 @@ function vitePluginManusDebugCollector(): Plugin {
 // Static development and static publishing use the same public-value whitelist
 // as Express. Runtime-only secrets never enter the browser bundle. Express keeps
 // serving this path dynamically when the application server is selected.
-function vitePluginPublicPlatformConfig(): Plugin {
+function vitePluginPublicPlatformConfig(): any {
   return {
     name: "manus-public-platform-config",
-    configureServer(server) {
-      server.middlewares.use("/api/platform/config.js", (_req, res) => {
+    configureServer(server: any) {
+      server.middlewares.use("/api/platform/config.js", (_req: any, res: any) => {
         res.setHeader("Content-Type", "application/javascript");
         res.setHeader("Cache-Control", "no-store");
         res.end(publicPlatformScript());
       });
     },
-    generateBundle() {
+    generateBundle(this: any) {
       this.emitFile({ type: "asset", fileName: "api/platform/config.js", source: publicPlatformScript() });
     },
   };
 }
 
-const plugins = [vitePluginPublicPlatformConfig(), react(), tailwindcss(), jsxLocPlugin(), vitePluginManusDebugCollector()];
+const plugins: any[] = [vitePluginPublicPlatformConfig(), react(), tailwindcss(), jsxLocPlugin(), vitePluginManusDebugCollector()];
 
 export default defineConfig({
   plugins,

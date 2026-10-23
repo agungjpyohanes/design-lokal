@@ -256,11 +256,16 @@ class SDKServer {
     } as GetUserInfoWithJwtResponse;
   }
 
-  async authenticateRequest(req: Request): Promise<AuthenticatedUser> {
+  async authenticateRequest(req: Request | any): Promise<AuthenticatedUser> {
+    const rawReq = req as any;
+    const reqHeaders = (rawReq?.headers ?? {}) as Record<string, string | string[] | undefined>;
+    const reqPath = ((rawReq?.path ?? rawReq?.url ?? "") as string);
+
     // 1. Prefer the session cookie (regular OAuth login).
-    const cookies = this.parseCookies(req.headers.cookie);
+    const cookieHeader = typeof reqHeaders.cookie === "string" ? reqHeaders.cookie : "";
+    const cookies = this.parseCookies(cookieHeader);
     let sessionToken = cookies.get(COOKIE_NAME);
-    if (!sessionToken && req.path.startsWith("/api/scheduled/")) {
+    if (!sessionToken && reqPath.startsWith("/api/scheduled/")) {
       const ticket = cookies.get("app_session_id");
       const identity = await this.verifySession(ticket);
       if (identity?.openId.startsWith(CRON_OPEN_ID_PREFIX)) sessionToken = ticket;
@@ -270,7 +275,7 @@ class SDKServer {
     //    sessionStorage), used when the browser blocks iframe cookies such as
     //    Safari ITP, private browsing, or iOS/Android WebView.
     if (!sessionToken) {
-      const authHeader = req.headers.authorization;
+      const authHeader = reqHeaders.authorization;
       if (typeof authHeader === "string" && authHeader.startsWith("Bearer ")) {
         sessionToken = authHeader.slice(7);
       }
