@@ -2,7 +2,7 @@ import { useAuth, DEFAULT_CLIENT_USER, type DemoUser } from "@/_core/hooks/useAu
 import { BrandMark } from "@/modules/auth";
 import { APP_ROLE_LABELS, type AppRole } from "@shared/workflow";
 import { trpc } from "@/lib/trpc";
-import { CalendarCheck, ClipboardList, Gauge, Menu, ShieldCheck, Sparkles, Ticket, Users, UserCheck, X } from "lucide-react";
+import { CalendarCheck, ClipboardList, Gauge, Kanban, Menu, ShieldCheck, Sparkles, Ticket, Users, UserCheck, X } from "lucide-react";
 import { Link, useLocation } from "wouter";
 import { useEffect, useMemo, useState } from "react";
 
@@ -83,6 +83,23 @@ const navItems = [
     href: "/tickets",
     title: "Tiket desain",
     icon: Ticket,
+    roles: [
+      "admin",
+      "superadmin",
+      "owner",
+      "manager",
+      "spv",
+      "designer",
+      "marketing",
+      "mpp",
+      "qc1",
+      "qc2",
+    ],
+  },
+  {
+    href: "/monitoringtracking",
+    title: "Monitoring Kanban",
+    icon: Kanban,
     roles: [
       "admin",
       "superadmin",

@@ -403,4 +403,38 @@ describe("Otorisasi Server-Side: Tiket Detail & Update Status Pekerjaan", () => 
       expect(res.success).toBe(true);
     });
   });
+
+  describe("Kanban Workflow: updateProcessStatus", () => {
+    it("Positif: Desainer yang ditugaskan dapat memindahkan tahap proses tiket", async () => {
+      const caller = appRouter.createCaller(assignedDesignerCtx); // Designer 5 (Tiket 1)
+      const res = await caller.workflow.tickets.updateProcessStatus({
+        ticketId: 1,
+        processStatus: "review_spv",
+        note: "Maju ke review SPV dari Kanban",
+      });
+      expect(res.success).toBe(true);
+      expect(res.processStatus).toBe("review_spv");
+    });
+
+    it("Negatif: Desainer lain DITOLAK memindahkan tahap proses tiket yang bukan miliknya (403)", async () => {
+      const caller = appRouter.createCaller(otherDesignerCtx); // Designer 6 (Tiket 1 milik Designer 5)
+      await expect(
+        caller.workflow.tickets.updateProcessStatus({
+          ticketId: 1,
+          processStatus: "menunggu_acc_owner",
+        })
+      ).rejects.toThrow(/Anda tidak memiliki izin/i);
+    });
+
+    it("Positif: SPV dapat memindahkan tahap proses tiket apa pun", async () => {
+      const caller = appRouter.createCaller(spvCtx);
+      const res = await caller.workflow.tickets.updateProcessStatus({
+        ticketId: 1,
+        processStatus: "qc_spv",
+        note: "SPV mengarahkan ke QC Prepress",
+      });
+      expect(res.success).toBe(true);
+      expect(res.processStatus).toBe("qc_spv");
+    });
+  });
 });

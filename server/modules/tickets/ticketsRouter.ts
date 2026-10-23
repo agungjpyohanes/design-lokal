@@ -20,7 +20,7 @@ import { getDb } from "../../db";
 import { demoStore } from "../../demoStore";
 import { storageGetSignedUrl, storagePut } from "../../storage";
 import { protectedProcedure, router } from "../../_core/trpc";
-import { JOB_STATUSES, QC_ITEMS, QC_STAGES } from "@shared/workflow";
+import { JOB_STATUSES, PROCESS_STATUSES, PROCESS_LABELS, QC_ITEMS, QC_STAGES } from "@shared/workflow";
 import {
   canReadTicket,
   emptyToNull,
@@ -515,6 +515,91 @@ export const ticketsRouter = router({
         });
         return { success: true };
       }
+      throw new TRPCError({ code: "NOT_FOUND", message: "Tiket tidak ditemukan." });
+    }),
+
+  updateProcessStatus: protectedProcedure
+    .input(
+      z.object({
+        ticketId: z.number().int(),
+        processStatus: z.enum(PROCESS_STATUSES),
+        note: z.string().max(2000).optional(),
+      })
+    )
+    .mutation(async ({ ctx, input }) => {
+      roles("designer", "spv", "admin", "superadmin", "owner", "qc1", "qc2", "manager")(ctx.user.appRole);
+      const db = await getDb();
+      if (db) {
+        try {
+          const [row] = await db
+            .select({ ticket: tickets, slot: designerSlots })
+            .from(tickets)
+            .innerJoin(designerSlots, eq(tickets.designerSlotId, designerSlots.id))
+            .where(eq(tickets.id, input.ticketId))
+            .limit(1);
+
+          if (row) {
+            if (ctx.user.appRole === "designer" && row.slot.userId !== ctx.user.id) {
+              throw new TRPCError({
+                code: "FORBIDDEN",
+                message: "Anda tidak memiliki izin untuk memperbarui tiket yang tidak ditugaskan kepada Anda.",
+              });
+            }
+
+            await db.transaction(async (tx) => {
+              await tx
+                .update(tickets)
+                .set({
+                  processStatus: input.processStatus,
+                  processUpdatedAt: new Date(),
+                  ...(input.processStatus === "closed" ? { closedAt: new Date() } : {}),
+                })
+                .where(eq(tickets.id, input.ticketId));
+
+              await event(
+                {
+                  ticketId: input.ticketId,
+                  actorUserId: ctx.user.id,
+                  eventType: "process_status_updated",
+                  detail: `Status proses dipindahkan ke ${PROCESS_LABELS[input.processStatus] || input.processStatus}${input.note ? ` — ${input.note}` : ""}`,
+                },
+                tx
+              );
+            });
+            return { success: true, ticketId: input.ticketId, processStatus: input.processStatus };
+          }
+        } catch (e) {
+          if (e instanceof TRPCError) throw e;
+          console.warn("[updateProcessStatus] DB failed, fallback to demoStore:", e);
+        }
+      }
+
+      // Demo store update
+      const t = demoStore.tickets.find((item) => item.id === input.ticketId);
+      if (t) {
+        const slot = demoStore.designerSlots.find((s) => s.id === t.designerSlotId);
+        if (ctx.user.appRole === "designer" && slot?.userId !== ctx.user.id) {
+          throw new TRPCError({
+            code: "FORBIDDEN",
+            message: "Anda tidak memiliki izin untuk memperbarui tiket yang tidak ditugaskan kepada Anda.",
+          });
+        }
+        t.processStatus = input.processStatus;
+        t.processUpdatedAt = new Date();
+        if (input.processStatus === "closed") {
+          t.closedAt = new Date();
+        }
+        demoStore.activityEvents.unshift({
+          id: demoStore.activityEvents.length + 1,
+          ticketId: input.ticketId,
+          actorUserId: ctx.user.id,
+          eventType: "process_status_updated",
+          detail: `Status proses dipindahkan ke ${PROCESS_LABELS[input.processStatus] || input.processStatus}${input.note ? ` — ${input.note}` : ""}`,
+          createdAt: new Date(),
+        });
+        return { success: true, ticketId: input.ticketId, processStatus: input.processStatus };
+      }
+
       throw new TRPCError({ code: "NOT_FOUND", message: "Tiket tidak ditemukan." });
     }),
 

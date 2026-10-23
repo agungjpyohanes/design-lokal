@@ -1,6 +1,6 @@
 import { trpc } from "@/lib/trpc";
 import { useAuth } from "@/_core/hooks/useAuth";
-import { Search, Ticket as TicketIcon, Plus, ArrowUpRight, LayoutGrid, Table as TableIcon } from "lucide-react";
+import { Search, Ticket as TicketIcon, Plus, ArrowUpRight, LayoutGrid, Table as TableIcon, Kanban } from "lucide-react";
 import { useMemo, useState } from "react";
 import { toast } from "sonner";
 import { Link, useLocation } from "wouter";
@@ -326,6 +326,13 @@ export function TicketsPage() {
               >
                 <LayoutGrid size={12} /> Kartu
               </button>
+              <Link
+                href="/monitoringtracking"
+                className="view-toggle-btn text-primary font-medium"
+                title="Buka Monitoring Kanban Board"
+              >
+                <Kanban size={12} /> Kanban View
+              </Link>
             </div>
             <span className="section-kicker">{rows.length} TIKET</span>
           </div>
