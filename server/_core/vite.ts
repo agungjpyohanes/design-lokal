@@ -6,7 +6,7 @@ import path from "path";
 import { createServer as createViteServer } from "vite";
 import viteConfig from "../../vite.config";
 
-export async function setupVite(app: Express, server: Server) {
+export async function setupVite(app: Express | any, server: Server | any) {
   const serverOptions = {
     middlewareMode: true,
     hmr: { server },
@@ -20,8 +20,8 @@ export async function setupVite(app: Express, server: Server) {
     appType: "custom",
   });
 
-  app.use(vite.middlewares);
-  app.use("*", async (req, res, next) => {
+  (app as any).use(vite.middlewares);
+  (app as any).use("*", async (req: any, res: any, next: any) => {
     const url = req.originalUrl;
 
     try {
@@ -40,14 +40,14 @@ export async function setupVite(app: Express, server: Server) {
       );
       const page = await vite.transformIndexHtml(url, template);
       res.status(200).set({ "Content-Type": "text/html" }).end(page);
-    } catch (e) {
+    } catch (e: any) {
       vite.ssrFixStacktrace(e as Error);
       next(e);
     }
   });
 }
 
-export function serveStatic(app: Express) {
+export function serveStatic(app: Express | any) {
   const distPath =
     process.env.NODE_ENV === "development"
       ? path.resolve(import.meta.dirname, "../..", "dist", "public")
@@ -58,10 +58,10 @@ export function serveStatic(app: Express) {
     );
   }
 
-  app.use(express.static(distPath));
+  (app as any).use(express.static(distPath));
 
   // fall through to index.html if the file doesn't exist
-  app.use("*", (_req, res) => {
+  (app as any).use("*", (_req: any, res: any) => {
     res.sendFile(path.resolve(distPath, "index.html"));
   });
 }
